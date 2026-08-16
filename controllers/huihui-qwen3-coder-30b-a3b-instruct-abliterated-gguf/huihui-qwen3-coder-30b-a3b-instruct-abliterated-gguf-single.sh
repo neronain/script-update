@@ -10,7 +10,7 @@ set -Eeuo pipefail
 SCRIPT_VERSION="${SCRIPT_VERSION:-0.3.0}"
 MODEL_LABEL="${MODEL_LABEL:-mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-GGUF}"
 RUNTIME_LABEL="${RUNTIME_LABEL:-llama.cpp (native build)}"
-MODEL_FEATURES="tools (qwen3_coder) · coding"
+MODEL_FEATURES="tools · coding"
 MODEL_ID="mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-GGUF"
 MODEL_REVISION="d7da518983e85529d7e7de7c9ef3901bcf9d8f51"
 # ชื่อโมเดลที่ API เสิร์ฟออกไป — ตั้งเองได้ผ่าน env เหมือน knob อื่น ๆ
