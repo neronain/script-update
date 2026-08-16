@@ -89,10 +89,10 @@ ROUTE_PROBE_IP="${ROUTE_PROBE_IP:-1.1.1.1}"
 
 N_GPU_LAYERS="${N_GPU_LAYERS:-999}"
 PARALLEL_SEQS="${PARALLEL_SEQS:-1}"
-CLIENT_OUTPUT="${CLIENT_OUTPUT:-8192}"
+CLIENT_OUTPUT="${CLIENT_OUTPUT:-5120}"
 CLIENT_INPUT="${CLIENT_INPUT:-auto}"
 TEMPLATE_OVERHEAD_TOKENS="2048"
-HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-1179}"
+HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-600}"
 # ========================================================================
 
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -181,12 +181,27 @@ download() {
   local i
   for i in "${!MODEL_FILES[@]}"; do
     echo "download [$(( i + 1 ))/${#MODEL_FILES[@]}]: ${MODEL_URLS[$i]}"
-    curl -fL --retry 5 -C - \
-      ${HF_TOKEN:+-H "Authorization: Bearer $HF_TOKEN"} \
-      -o "${MODEL_DIR}/${MODEL_FILES[$i]}" \
-      "${MODEL_URLS[$i]}"
+    fetch_one "${MODEL_URLS[$i]}" "${MODEL_DIR}/${MODEL_FILES[$i]}"
   done
   echo "download complete: ${MODEL_DIR} (${#MODEL_FILES[@]} ไฟล์)"
+}
+
+# ดึงหนึ่งไฟล์ · ใช้ aria2c ถ้ามี (เปิดหลาย connection พร้อมกัน) ไม่งั้นถอยไป curl
+# ทำไม: CDN บางเจ้า (เจอจริงกับ bartowski) throttle ต่อ connection เหลือ ~150KB/s
+# ทั้งที่เครื่องมีแบนด์วิดท์เหลือ — 63GB จะกลายเป็น 6 ชั่วโมงทั้งที่ควรเสร็จใน 20 นาที
+# aria2c -x16 เปิด 16 ช่องขนานจึงเลี่ยง throttle ต่อ connection ได้ · ทั้งคู่ resume ได้
+# (ไฟล์ที่โหลดค้างไว้ทำต่อ ไม่เริ่มใหม่) และ verify_files เช็ก size ต่อทุกครั้งอยู่แล้ว
+fetch_one() {
+  local url="$1" out="$2"
+  if command -v aria2c >/dev/null 2>&1; then
+    aria2c -x16 -s16 -k1M --continue=true --file-allocation=none \
+      ${HF_TOKEN:+--header="Authorization: Bearer $HF_TOKEN"} \
+      -d "$(dirname "$out")" -o "$(basename "$out")" "$url" && return 0
+    echo "aria2c ล้ม — ถอยไป curl"
+  fi
+  curl -fL --retry 5 -C - \
+    ${HF_TOKEN:+-H "Authorization: Bearer $HF_TOKEN"} \
+    -o "$out" "$url"
 }
 
 verify_files() {
@@ -215,26 +230,51 @@ verify_files() {
   echo "verify-files: OK (${#MODEL_FILES[@]} ไฟล์ใน ${MODEL_DIR})"
 }
 
+find_cuda_toolkit() {
+  # DGX OS ลง CUDA ไว้ที่ /usr/local/cuda แต่ไม่ได้ใส่ใน PATH ของ shell ที่ไม่ใช่ login
+  # (เช่นที่ hub เรียกผ่าน SSH) `command -v nvcc` จึงไม่เจอทั้งที่ toolkit อยู่ครบ
+  # แล้วเราไปเตือนว่า "ไม่พบ CUDA" ก่อนจะไป build ล้มอีกทีตอน cmake — ทั้งที่แค่ต้องหาให้เจอ
+  command -v nvcc >/dev/null 2>&1 && return 0
+  local dir
+  for dir in /usr/local/cuda/bin /usr/local/cuda-*/bin; do
+    if [[ -x "${dir}/nvcc" ]]; then
+      export PATH="${dir}:${PATH}"
+      echo "พบ CUDA toolkit ที่ ${dir} — เพิ่มเข้า PATH ให้แล้ว"
+      return 0
+    fi
+  done
+  return 1
+}
+
 install_build_dependencies() {
   # ติดตั้ง build deps ให้อัตโนมัติ — ผู้ใช้ไม่ต้องรู้ล่วงหน้าว่าต้องลงอะไร
+  #
+  # ninja ไม่อยู่ในลิสต์นี้: cmake ถอยไปใช้ Unix Makefiles ได้เองเมื่อไม่มี ninja
+  # การใส่มันไว้ทำให้เครื่องที่มีของครบทุกอย่างแล้วยังต้องไปขอ sudo เพื่อลง generator
+  # ที่ไม่ได้จำเป็น แล้วตายทันทีบนเครื่องที่ sudo ขอรหัส (ซึ่งคือค่าปกติของ Ubuntu)
+  # — เจอจริงบน msi-4 2026-08-15: ขาดแค่ ninja ทั้งที่ build ได้อยู่แล้ว
   local missing=()
   command -v git   >/dev/null 2>&1 || missing+=(git)
   command -v cmake >/dev/null 2>&1 || missing+=(cmake)
-  command -v ninja >/dev/null 2>&1 || missing+=(ninja-build)
   command -v gcc   >/dev/null 2>&1 || missing+=(build-essential)
   command -v curl  >/dev/null 2>&1 || missing+=(curl)
 
   if [[ ${#missing[@]} -gt 0 ]]; then
-    if command -v apt-get >/dev/null 2>&1; then
-      echo "ติดตั้ง build dependencies ที่ขาด: ${missing[*]} (ต้องใส่รหัส sudo)"
-      sudo apt-get update -y
-      sudo apt-get install -y "${missing[@]}"
-    else
+    if ! command -v apt-get >/dev/null 2>&1; then
       die "ขาด dependencies: ${missing[*]} — ระบบไม่มี apt-get ต้องติดตั้งเอง"
     fi
+    echo "ติดตั้ง build dependencies ที่ขาด: ${missing[*]}"
+    # -n = ไม่ขอรหัสผ่าน · ถ้าเครื่องนี้ต้องใส่รหัส บอกคำสั่งที่ต้องรันไปตรง ๆ
+    # ดีกว่าปล่อยให้ sudo ตายพร้อมข้อความ "a terminal is required" ที่ไม่ได้บอกว่าทำอะไรต่อ
+    if ! sudo -n true 2>/dev/null; then
+      die "ต้องติดตั้ง ${missing[*]} แต่ sudo บนเครื่องนี้ขอรหัสผ่าน — รันคำสั่งนี้เองก่อน:
+  sudo apt-get update -y && sudo apt-get install -y ${missing[*]}"
+    fi
+    sudo apt-get update -y
+    sudo apt-get install -y "${missing[@]}"
   fi
 
-  command -v nvcc >/dev/null 2>&1 ||
+  find_cuda_toolkit ||
     echo "คำเตือน: ไม่พบ nvcc (CUDA Toolkit) — ถ้า build ล้มเหลว ติดตั้ง CUDA Toolkit ก่อน (DGX OS มีมาให้แล้ว)"
 }
 
@@ -307,8 +347,6 @@ server_args() {
   fi
 
 
-
-  SERVER_ARGS+=(--jinja)
 
 }
 
