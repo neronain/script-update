@@ -1,0 +1,13 @@
+slug: huihui-gpt-oss-120b-abliterated-mxfp4-moe-gguf
+validated_on: 2026-08-16 11:29 · msi-3
+validated_host: msi-3
+source:
+  id: noctrex/Huihui-gpt-oss-120b-abliterated-MXFP4_MOE-GGUF
+  revision: 6296149cb42b0d66f81c83448ffc7b26ad18aca5
+  gguf: Huihui-gpt-oss-120b-abliterated-MXFP4_MOE-00001-of-00004.gguf
+engine: llamacpp
+measured_features:
+- tools
+- reasoning
+- coding
+note: model-intrinsic only; per-machine port/context live in bundle.env

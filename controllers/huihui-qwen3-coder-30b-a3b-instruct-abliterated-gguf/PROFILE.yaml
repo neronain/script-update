@@ -1,0 +1,12 @@
+slug: huihui-qwen3-coder-30b-a3b-instruct-abliterated-gguf
+validated_on: 2026-08-16 11:29 · msi-3
+validated_host: msi-3
+source:
+  id: mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-GGUF
+  revision: d7da518983e85529d7e7de7c9ef3901bcf9d8f51
+  gguf: Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q6_K.gguf
+engine: llamacpp
+measured_features:
+- tools (qwen3_coder)
+- coding
+note: model-intrinsic only; per-machine port/context live in bundle.env
