@@ -82,10 +82,10 @@ ROUTE_PROBE_IP="${ROUTE_PROBE_IP:-1.1.1.1}"
 
 N_GPU_LAYERS="${N_GPU_LAYERS:-999}"
 PARALLEL_SEQS="${PARALLEL_SEQS:-1}"
-CLIENT_OUTPUT="${CLIENT_OUTPUT:-8192}"
+CLIENT_OUTPUT="${CLIENT_OUTPUT:-5120}"
 CLIENT_INPUT="${CLIENT_INPUT:-auto}"
 TEMPLATE_OVERHEAD_TOKENS="2048"
-HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-1002}"
+HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-600}"
 # ========================================================================
 
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -174,12 +174,27 @@ download() {
   local i
   for i in "${!MODEL_FILES[@]}"; do
     echo "download [$(( i + 1 ))/${#MODEL_FILES[@]}]: ${MODEL_URLS[$i]}"
-    curl -fL --retry 5 -C - \
-      ${HF_TOKEN:+-H "Authorization: Bearer $HF_TOKEN"} \
-      -o "${MODEL_DIR}/${MODEL_FILES[$i]}" \
-      "${MODEL_URLS[$i]}"
+    fetch_one "${MODEL_URLS[$i]}" "${MODEL_DIR}/${MODEL_FILES[$i]}"
   done
   echo "download complete: ${MODEL_DIR} (${#MODEL_FILES[@]} ไฟล์)"
+}
+
+# ดึงหนึ่งไฟล์ · ใช้ aria2c ถ้ามี (เปิดหลาย connection พร้อมกัน) ไม่งั้นถอยไป curl
+# ทำไม: CDN บางเจ้า (เจอจริงกับ bartowski) throttle ต่อ connection เหลือ ~150KB/s
+# ทั้งที่เครื่องมีแบนด์วิดท์เหลือ — 63GB จะกลายเป็น 6 ชั่วโมงทั้งที่ควรเสร็จใน 20 นาที
+# aria2c -x16 เปิด 16 ช่องขนานจึงเลี่ยง throttle ต่อ connection ได้ · ทั้งคู่ resume ได้
+# (ไฟล์ที่โหลดค้างไว้ทำต่อ ไม่เริ่มใหม่) และ verify_files เช็ก size ต่อทุกครั้งอยู่แล้ว
+fetch_one() {
+  local url="$1" out="$2"
+  if command -v aria2c >/dev/null 2>&1; then
+    aria2c -x16 -s16 -k1M --continue=true --file-allocation=none \
+      ${HF_TOKEN:+--header="Authorization: Bearer $HF_TOKEN"} \
+      -d "$(dirname "$out")" -o "$(basename "$out")" "$url" && return 0
+    echo "aria2c ล้ม — ถอยไป curl"
+  fi
+  curl -fL --retry 5 -C - \
+    ${HF_TOKEN:+-H "Authorization: Bearer $HF_TOKEN"} \
+    -o "$out" "$url"
 }
 
 verify_files() {
@@ -321,8 +336,6 @@ server_args() {
   if [[ -n "$API_KEY" ]]; then SERVER_ARGS+=(--api-key "$API_KEY"); fi
 
 
-
-  SERVER_ARGS+=(--jinja)
 
 }
 
