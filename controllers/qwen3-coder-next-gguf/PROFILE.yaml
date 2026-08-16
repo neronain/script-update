@@ -1,0 +1,12 @@
+slug: qwen3-coder-next-gguf
+validated_on: 2026-08-16 11:43 · gigabyte02
+validated_host: gigabyte02
+source:
+  id: unsloth/Qwen3-Coder-Next-GGUF
+  revision: ce09c67b53bc8739eef83fe67b2f5d293c270632
+  gguf: Qwen3-Coder-Next-UD-Q4_K_XL.gguf
+engine: llamacpp
+measured_features:
+- tools
+- coding
+note: model-intrinsic only; per-machine port/context live in bundle.env

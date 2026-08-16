@@ -1,0 +1,14 @@
+slug: qwen3-8-27b-gguf
+validated_on: 2026-08-16 11:43 · gigabyte02
+validated_host: gigabyte02
+source:
+  id: unsloth/Qwen3.8-27B-GGUF
+  revision: f1bfb127c64f7072bdd2cad55f258b9c8b2910fe
+  gguf: Qwen3.8-27B-UD-Q8_K_XL.gguf
+engine: llamacpp
+measured_features:
+- tools
+- vision
+- reasoning
+- coding
+note: model-intrinsic only; per-machine port/context live in bundle.env
