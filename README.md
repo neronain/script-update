@@ -42,6 +42,19 @@ mmproj ครบ, quant ที่ start ขึ้นจริง) คำสั�
 ทำไมต้องแยก: ระบบนี้ไม่ได้มีแค่ทีมเราใช้ ลูกค้าเอาไปรันบนเครื่องของเขาด้วย ถ้าปล่อยให้ทุกเครื่อง
 push เข้าคลังกลางตรง ๆ คลังกลางจะปนเปื้อนค่าที่จูนเฉพาะเครื่อง — candidates กันไว้ตรงนี้
 
+## ระบบทั้งหมด — 4 repo ทำงานร่วมกัน
+
+repo นี้เป็นส่วนหนึ่งของระบบ 4 ชั้นที่ทำงานร่วมกัน ตั้งแต่ deploy โมเดล จนถึง serve ผ่าน endpoint เดียว
+
+| Repo | บทบาท |
+|---|---|
+| [AutoDeployDGXProject](https://github.com/neronain/AutoDeployDGXProject) | **LMDS** — โหลด weight, สร้าง controller, deploy+รันโมเดลทั้งฟลีต |
+| [AiGatewayLocal](https://github.com/neronain/AiGatewayLocal) | **LiteGate** — endpoint OpenAI/Anthropic เดียว พร้อม key/quota/ตรวจ capability |
+| [dgx-spark-all-controllers](https://github.com/neronain/dgx-spark-all-controllers) | **controller กลาง (canonical)** — สคริปต์ที่ curate/ตรวจแล้ว ทุกเครื่อง pull |
+| [script-update](https://github.com/neronain/script-update) | **controller candidate** (repo นี้) — ตัวที่เพิ่ง publish รอ review ก่อน promote |
+
+**วงจรคืน**: LMDS deploy → `lmds recipes --publish` มาที่ repo นี้ (candidates) → review แล้ว promote ขึ้น dgx-spark-all-controllers (canonical) → ทุกเครื่อง `lmds recipes --sync` จาก canonical · LiteGate เสิร์ฟ+วัดความสามารถจริง
+
 ## สิ่งที่เก็บ — และสิ่งที่ **ไม่** เก็บ
 
 controller ที่ publish มาถือเฉพาะ **"ค่าของโมเดล"** (จริงเหมือนกันทุกเครื่อง) ·
